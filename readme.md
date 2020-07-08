@@ -18,6 +18,7 @@
 If the delta is disabled or if it is the first time, get all applications
 
 ## Example
+go get https://github.com/fl183/eureka-client
 
 ```go
 package main
@@ -27,7 +28,7 @@ import (
 	"fmt"
 	"net/http"
 
-	eureka "github.com/xuanbo/eureka-client"
+	eureka "github.com/fl183/eureka-client"
 )
 
 func main() {
