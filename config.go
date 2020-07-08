@@ -6,6 +6,8 @@ import (
 
 // Config eureka客户端配置
 type Config struct {
+	// eureka服务端地址列表
+	Zones []string
 	// eureka服务端地址
 	DefaultZone string
 	// 心跳间隔，默认30s

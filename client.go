@@ -2,6 +2,7 @@ package eureka_client
 
 import (
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,58 +20,182 @@ type Client struct {
 	Config     *Config
 	// eureka服务中注册的应用
 	Applications *Applications
+	Registered bool
+}
+
+func cGetZone(zones []string) string {
+	rand.Seed(time.Now().UnixNano())
+
+	var randNum int
+	for {
+		if randNum = rand.Intn(100); randNum == 0 {
+			continue
+		}
+		log.Println(randNum)
+		break
+	}
+
+	var zone = zones[randNum%len(zones)]
+	log.Println("nums", len(zones), randNum%len(zones))
+	log.Println(zones)
+	log.Println(zone)
+	return zone
 }
 
 // Start 启动时注册客户端，并后台刷新服务列表，以及心跳
 func (c *Client) Start() {
 	c.mutex.Lock()
 	c.Running = true
+	c.Registered = false
 	c.mutex.Unlock()
-	// 注册
-	if err := c.doRegister(); err != nil {
-		log.Println(err.Error())
-		return
-	}
-	log.Println("Register application instance successful")
-	// 刷新服务列表
-	go c.refresh()
-	// 心跳
-	go c.heartbeat()
+
+	c.Config.DefaultZone = cGetZone(c.Config.Zones)
+
 	// 监听退出信号，自动删除注册信息
 	go c.handleSignal()
+
+	var cRefresh = make(chan int)
+	var cHeartbeat = make(chan int)
+	var tryCount = 0
+	var serverNum = len(c.Config.Zones)
+
+	for {
+		if c.Registered == false {
+			// 注册
+			c.Registered = true
+			tryCount++
+			if err := c.doRegister(); err != nil {
+				log.Println(err.Error())
+				c.Registered = false
+				time.Sleep(time.Duration(1)*time.Second)
+				if err := c.doRegister(); err != nil {
+					log.Println(err.Error())
+					c.Registered = false
+					time.Sleep(time.Duration(1)*time.Second)
+					if err := c.doRegister(); err != nil {
+						log.Println(err.Error())
+						c.Registered = false
+						time.Sleep(time.Duration(1)*time.Second)
+						if tryCount < serverNum {
+							for i:=0; i<len(c.Config.Zones); i++ {
+								if c.Config.Zones[i] == c.Config.DefaultZone {
+									c.Config.Zones = append(c.Config.Zones[:i], c.Config.Zones[i+1:]...)
+									c.Config.DefaultZone = cGetZone(c.Config.Zones)
+								}
+							}
+							continue
+						}
+						log.Println("Eureka register failed, Exit...")
+						os.Exit(5)
+					}
+				}
+			}
+			log.Println("Register application instance successful")
+		}
+
+		// 刷新服务列表
+		go c.refresh(cRefresh, cHeartbeat)
+		// 心跳
+		go c.heartbeat(cHeartbeat, cRefresh)
+
+		select {
+		case cR := <-cRefresh:
+			for i:=0; i<len(c.Config.Zones); i++ {
+				if c.Config.Zones[i] == c.Config.DefaultZone {
+					c.Config.Zones = append(c.Config.Zones[:i], c.Config.Zones[i+1:]...)
+					c.Config.DefaultZone = cGetZone(c.Config.Zones)
+				}
+			}
+			cRefresh <- cR
+			time.Sleep(time.Duration(1)*time.Second)
+		case cH := <-cHeartbeat:
+			for i:=0; i<len(c.Config.Zones); i++ {
+				if c.Config.Zones[i] == c.Config.DefaultZone {
+					c.Config.Zones = append(c.Config.Zones[:i], c.Config.Zones[i+1:]...)
+					c.Config.DefaultZone = cGetZone(c.Config.Zones)
+				}
+			}
+			cHeartbeat <- cH
+			time.Sleep(time.Duration(1)*time.Second)
+			//default:
+		//	client.UnRegister()
+		//	os.Exit(1)
+		}
+	}
+
 }
 
 // refresh 刷新服务列表
-func (c *Client) refresh() {
+func (c *Client) refresh(c1 chan int, c2 chan int) {
 	for {
+		select {
+		case t2 := <-c2:
+			c2 <- t2
+			break
+		default:
+			sleep := time.Duration(c.Config.RegistryFetchIntervalSeconds)
+			time.Sleep(sleep * time.Second)
+		}
 		if c.Running {
 			if err := c.doRefresh(); err != nil {
 				log.Println(err)
+				time.Sleep(time.Duration(3)*time.Second)
+				if err := c.doRefresh(); err != nil {
+					log.Println(err)
+					time.Sleep(time.Duration(3)*time.Second)
+					if err := c.doRefresh(); err != nil {
+						log.Println(err)
+						c1 <- 1
+						break
+					} else {
+						log.Println("Refresh application instance successful")
+					}
+				} else {
+					log.Println("Refresh application instance successful")
+				}
 			} else {
 				log.Println("Refresh application instance successful")
 			}
 		} else {
 			break
 		}
-		sleep := time.Duration(c.Config.RegistryFetchIntervalSeconds)
-		time.Sleep(sleep * time.Second)
 	}
 }
 
 // heartbeat 心跳
-func (c *Client) heartbeat() {
+func (c *Client) heartbeat(c1 chan int, c2 chan int) {
 	for {
+		select {
+		case t2 := <-c2:
+			c2 <- t2
+			break
+		default:
+			sleep := time.Duration(c.Config.RenewalIntervalInSecs)
+			time.Sleep(sleep * time.Second)
+		}
 		if c.Running {
 			if err := c.doHeartbeat(); err != nil {
 				log.Println(err)
+				time.Sleep(time.Duration(3)*time.Second)
+				if err := c.doHeartbeat(); err != nil {
+					log.Println(err)
+					time.Sleep(time.Duration(3)*time.Second)
+					if err := c.doHeartbeat(); err != nil {
+						log.Println(err)
+						c1 <- 1
+						break
+					} else {
+						log.Println("Heartbeat application instance successful")
+					}
+				} else {
+					log.Println("Heartbeat application instance successful")
+				}
 			} else {
 				log.Println("Heartbeat application instance successful")
 			}
 		} else {
 			break
 		}
-		sleep := time.Duration(c.Config.RenewalIntervalInSecs)
-		time.Sleep(sleep * time.Second)
 	}
 }
 
@@ -82,6 +207,11 @@ func (c *Client) doRegister() error {
 func (c *Client) doUnRegister() error {
 	instance := c.Config.instance
 	return UnRegister(c.Config.DefaultZone, instance.App, instance.InstanceID)
+}
+
+func (c *Client) UnRegister() {
+	instance := c.Config.instance
+	UnRegister(c.Config.DefaultZone, instance.App, instance.InstanceID)
 }
 
 func (c *Client) doHeartbeat() error {
@@ -125,7 +255,8 @@ func (c *Client) handleSignal() {
 			} else {
 				log.Println("UnRegister application instance successful")
 			}
-			os.Exit(0)
+			c.Running = false
+			//os.Exit(0)
 		}
 	}
 }

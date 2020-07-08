@@ -10,6 +10,32 @@ import (
 // 与eureka服务端rest交互
 // https://github.com/Netflix/eureka/wiki/Eureka-REST-operations
 
+func getZone(zones string) string {
+	//var eureServerkaList = strings.Split(zones, ",")
+	//rand.Seed(time.Now().UnixNano())
+	//
+	//var zone = eureServerkaList[rand.Intn(100)%len(eureServerkaList)]
+	return zones
+}
+
+//func getZoneRetry(zones string, current string) string {
+//	var finalZone []string
+//	for bad := range current {
+//		var temps = strings.Split(zones)
+//
+//		for temp := range temps {
+//			if temp == bad {
+//				continue
+//			} else {
+//				finalZone = append(ret, temp)
+//			}
+//		}
+//	}
+//	rand.Seed(time.Now().UnixNano())
+//	var zone = finalZone[rand.Intn(100)%len(finalZone)]
+//	return zone
+//}
+
 // Register 注册实例
 // POST /eureka/v2/apps/appID
 func Register(zone, app string, instance *Instance) error {
@@ -21,7 +47,7 @@ func Register(zone, app string, instance *Instance) error {
 		Instance: instance,
 	}
 
-	url := zone + "apps/" + app
+	url := getZone(zone) + "apps/" + app
 
 	// status: http.StatusNoContent
 	result := requests.Post(url).Json(info).Send().Status2xx()
@@ -34,7 +60,7 @@ func Register(zone, app string, instance *Instance) error {
 // UnRegister 删除实例
 // DELETE /eureka/v2/apps/appID/instanceID
 func UnRegister(zone, app, instanceID string) error {
-	url := zone + "apps/" + app + "/" + instanceID
+	url := getZone(zone) + "apps/" + app + "/" + instanceID
 	// status: http.StatusNoContent
 	result := requests.Delete(url).Send().StatusOk()
 	if result.Err != nil {
@@ -53,7 +79,7 @@ func Refresh(zone string) (*Applications, error) {
 	res := &Result{
 		Applications: apps,
 	}
-	url := zone + "apps"
+	url := getZone(zone) + "apps"
 	err := requests.Get(url).Header("Accept", " application/json").Send().StatusOk().Json(res)
 	if err != nil {
 		return nil, fmt.Errorf("Refresh failed, error: %s", err)
@@ -64,7 +90,7 @@ func Refresh(zone string) (*Applications, error) {
 // Heartbeat 发送心跳
 // PUT /eureka/v2/apps/appID/instanceID
 func Heartbeat(zone, app, instanceID string) error {
-	u := zone + "apps/" + app + "/" + instanceID
+	u := getZone(zone) + "apps/" + app + "/" + instanceID
 	params := url.Values{
 		"status": {"UP"},
 	}
