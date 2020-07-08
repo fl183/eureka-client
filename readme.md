@@ -1,4 +1,4 @@
-# Eureka-Client
+# Eureka-Client based github.com/xuanbo/eureka-client
 
 > eureka client by golang
 
